@@ -54,7 +54,7 @@ export interface HistoryItem {
   riskProfile: string;
   horizon: number;
   result: AnalysisResult;
-  allocation: any[];
+  allocations: any[];
   explanation: string;
 }
 

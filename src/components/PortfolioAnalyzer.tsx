@@ -38,7 +38,7 @@ export default function PortfolioAnalyzer({ history, setHistory }: PortfolioAnal
   const [suggestions, setSuggestions] = useState<Stock[]>([]);
   const [portfolio, setPortfolio] = useState<PortfolioItem[]>([]);
   const [result, setResult] = useState<AnalysisResult | null>(null);
-  const [allocation, setAllocation] = useState<any[] | null>(null);
+  const [allocations, setAllocations] = useState<any[] | null>(null);
   const [excluded, setExcluded] = useState<any[]>([]);
   const [explanation, setExplanation] = useState<string>("");
   const [loading, setLoading] = useState(false);
@@ -54,12 +54,12 @@ export default function PortfolioAnalyzer({ history, setHistory }: PortfolioAnal
   useEffect(() => {
     localStorage.setItem("currentPortfolio", JSON.stringify(portfolio));
     localStorage.setItem("currentResult", JSON.stringify(result));
-    localStorage.setItem("currentAllocation", JSON.stringify(allocation));
+    localStorage.setItem("currentAllocation", JSON.stringify(allocations));
     localStorage.setItem("currentExplanation", explanation);
     localStorage.setItem("currentSipAmount", sipAmount.toString());
     localStorage.setItem("currentRiskProfile", riskProfile);
     localStorage.setItem("currentHorizon", horizon.toString());
-  }, [portfolio, result, allocation, explanation, sipAmount, riskProfile, horizon]);
+  }, [portfolio, result, allocations, explanation, sipAmount, riskProfile, horizon]);
 
   useEffect(() => {
     if (searchTerm.trim() === "") {
@@ -89,7 +89,7 @@ export default function PortfolioAnalyzer({ history, setHistory }: PortfolioAnal
   const reset = () => {
     setPortfolio([]);
     setResult(null);
-    setAllocation(null);
+    setAllocations(null);
     setExcluded([]);
     setExplanation("");
     setSearchTerm("");
@@ -140,26 +140,17 @@ export default function PortfolioAnalyzer({ history, setHistory }: PortfolioAnal
   const analyze = async () => {
     setLoading(true);
     try {
-      // 1. Get AI signals first
-      const aiResponse = await geminiService.getStockSignals(
-        portfolio,
-        sipAmount,
-        riskProfile,
-        horizon
-      );
-
-      // 2. Call backend for deterministic calculation and analysis
+      // 1. Call backend for deterministic calculation and analysis
+      // AI signals are now handled internally by the backend
       const data = await apiService.analyze({ 
         portfolio,
         sip_amount: sipAmount,
         risk_profile: riskProfile,
-        horizon: `${horizon} years`,
-        aiSignals: aiResponse.signals,
-        aiStrategy: aiResponse.strategy
+        horizon: `${horizon} years`
       });
 
       setResult(data.analysis);
-      setAllocation(data.allocation);
+      setAllocations(data.allocations);
       setExcluded(data.excluded || []);
       setExplanation(data.explanation);
 
@@ -172,7 +163,7 @@ export default function PortfolioAnalyzer({ history, setHistory }: PortfolioAnal
         riskProfile,
         horizon,
         result: data.analysis,
-        allocation: data.allocation,
+        allocations: data.allocations,
         explanation: data.explanation
       };
       setHistory([newHistoryItem, ...history]);
@@ -270,7 +261,7 @@ export default function PortfolioAnalyzer({ history, setHistory }: PortfolioAnal
           <div className="space-y-4 max-h-[420px] overflow-y-auto pr-2 custom-scrollbar">
             {portfolio.map((item) => {
               const isExcluded = excluded.find(e => e.ticker === item.ticker);
-              const alloc = allocation?.find(a => a.ticker === item.ticker);
+              const alloc = allocations?.find(a => a.ticker === item.ticker);
               const hasRedFlag = isExcluded || (alloc?.score < 4);
 
               return (
@@ -626,7 +617,7 @@ export default function PortfolioAnalyzer({ history, setHistory }: PortfolioAnal
             className="space-y-8"
           >
             {/* Recommended SIP Allocation */}
-            {allocation && (
+            {allocations && (
               <div className="bg-white dark:bg-[#111] p-8 rounded-[32px] shadow-sm border border-[#e5e5e5] dark:border-[#222]">
                 <div className="flex justify-between items-start mb-8">
                   <div>
@@ -639,7 +630,7 @@ export default function PortfolioAnalyzer({ history, setHistory }: PortfolioAnal
                 </div>
 
                 <div className="grid grid-cols-1 gap-4">
-                  {allocation.map((alloc) => (
+                  {allocations.map((alloc) => (
                     <div key={alloc.ticker} className="group">
                       <div className="flex flex-col md:flex-row md:items-center justify-between p-6 bg-[#f9f9f9] dark:bg-[#1a1a1a] rounded-[28px] border border-[#eee] dark:border-[#333] group-hover:border-gray-300 dark:group-hover:border-gray-600 transition-all gap-6">
                         <div className="flex items-center gap-5">

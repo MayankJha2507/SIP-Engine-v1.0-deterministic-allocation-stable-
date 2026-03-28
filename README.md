@@ -1,39 +1,20 @@
-## SIPSense
+<div align="center">
+<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
+</div>
 
-# URL access: https://sipsuggeston.netlify.app/ 
-*This is currently with BE and only mocks data
+# Run and deploy your AI Studio app
 
-SIPSense is a web application that helps investors decide how to allocate their monthly SIP (Systematic Investment Plan) across their existing stock portfolio.
+This contains everything you need to run your app locally.
 
-Unlike typical "AI stock pickers", SIPSense uses a deterministic, rule-based engine to analyze:
+View your app in AI Studio: https://ai.studio/apps/86543765-a170-4d80-a9a8-390127d11c76
 
-- Portfolio concentration (stock & sector level)
-- Risk exposure
-- Market signals (trend, volatility, market cap)
+## Run Locally
 
-Based on this, it suggests a focused SIP allocation (3–5 stocks) for the current cycle, along with clear reasoning behind each decision.
+**Prerequisites:**  Node.js
 
-### Key Principles
 
-- Logic-first, not hype
-- Deterministic and explainable decisions
-- Avoid over-diversification and tiny allocations
-- Actively correct portfolio imbalances
-
-### What it does
-
-- Detects concentration risks
-- Filters weak or high-risk stocks
-- Prioritizes strong opportunities
-- Enforces diversification during allocation
-- Ensures meaningful SIP distribution (no tiny allocations)
-
-### Tech Stack
-
-- Frontend: React + TypeScript + Tailwind
-- Backend: Node / TypeScript
-- Architecture: Deterministic engine + optional AI explanation layer
-
----
-
-This is currently **v1.0**, focused on building a reliable core allocation engine. Future versions will introduce AI-powered explanations and deeper personalization.
+1. Install dependencies:
+   `npm install`
+2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
+3. Run the app:
+   `npm run dev`

@@ -363,7 +363,7 @@ export default function App() {
                   <h3 className="text-lg font-medium">Recommended Allocation</h3>
                   <p className="text-sm text-gray-500 dark:text-gray-400 leading-relaxed italic">"{selectedHistoryItem.explanation}"</p>
                   <div className="space-y-3">
-                    {selectedHistoryItem.allocation && selectedHistoryItem.allocation.map((alloc) => (
+                    {selectedHistoryItem.allocations && selectedHistoryItem.allocations.map((alloc) => (
                       <div key={alloc.ticker} className="flex items-center justify-between p-4 bg-[#f9f9f9] dark:bg-[#1a1a1a] rounded-2xl border border-[#eee] dark:border-[#333]">
                         <div className="flex items-center gap-4">
                           <div className="w-10 h-10 bg-white dark:bg-[#222] rounded-lg flex items-center justify-center border border-[#eee] dark:border-[#333] font-bold text-xs">
