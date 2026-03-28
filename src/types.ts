@@ -1,0 +1,52 @@
+export interface Stock {
+  ticker: string;
+  name: string;
+  sector?: string;
+  marketCap?: string;
+}
+
+export interface PortfolioItem {
+  ticker: string;
+  weight: number;
+}
+
+export interface SectorAllocation {
+  sector: string;
+  weight: number;
+}
+
+export interface MarketCapAllocation {
+  category: "Large Cap" | "Mid Cap" | "Small Cap" | "Unknown";
+  weight: number;
+}
+
+export interface AnalysisResult {
+  overweight: string[];
+  underweight: string[];
+  diversificationScore: "Poor" | "Moderate" | "Good";
+  concentrationRisk: boolean;
+  totalWeight: number;
+  sectorAllocation: SectorAllocation[];
+  marketCapAllocation: MarketCapAllocation[];
+  aiStrategy?: string;
+}
+
+export interface HistoryItem {
+  id: string;
+  timestamp: number;
+  portfolio: PortfolioItem[];
+  sipAmount: number;
+  riskProfile: string;
+  horizon: number;
+  result: AnalysisResult;
+  allocation: any[];
+  explanation: string;
+}
+
+export interface TopPick {
+  ticker: string;
+  name: string;
+  rationale: string;
+  sector: string;
+  potential: string;
+}
