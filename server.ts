@@ -2,12 +2,8 @@ import express from "express";
 import cors from "cors";
 import { createServer as createViteServer } from "vite";
 import path from "path";
-import { fileURLToPath } from "url";
 import apiRoutes from "./src/backend/routes/index.ts";
 import { errorHandler } from "./src/backend/middleware/errorHandler.ts";
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 
 async function startServer() {
   const app = express();
