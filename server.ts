@@ -25,10 +25,7 @@ async function startServer() {
   // Modular Routes
   app.use("/api", apiRoutes);
 
-  // Error Handler
-  app.use(errorHandler);
-
-  // Vite integration
+  // Vite integration / Static files
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({
       server: { middlewareMode: true },
@@ -36,12 +33,16 @@ async function startServer() {
     });
     app.use(vite.middlewares);
   } else {
-    const distPath = path.join(process.cwd(), "dist");
+    const distPath = path.resolve("dist");
     app.use(express.static(distPath));
+    // Fallback for frontend routes
     app.get("*", (req, res) => {
       res.sendFile(path.join(distPath, "index.html"));
     });
   }
+
+  // Error Handler
+  app.use(errorHandler);
 
   app.listen(Number(PORT), "0.0.0.0", () => {
     console.log(`SIPSense server running on port ${PORT}`);
