@@ -20,12 +20,12 @@ export interface StockAllocation {
   percentage: number;
   signals: StockSignals;
   score: number;
-  reason?: string; // Restored for backward compatibility
+  reasons?: string[]; // Bullet reasons
 }
 
 export interface ExcludedStock {
   ticker: string;
-  reason: string;
+  reasons: string[];
   score?: number;
 }
 
@@ -37,6 +37,8 @@ export interface SipAllocationResult {
   meta: {
     riskType: string;
     overConcentratedSector?: string;
+    cashReserve?: number;
+    recommendation?: string;
   };
 }
 
@@ -46,6 +48,26 @@ export interface SipInput {
   riskProfile: RiskProfile;
   horizon: number;
   aiSignals: Record<string, StockSignals>; // ✅ Restored for backward compatibility
+}
+
+export function generateReasonsFromSignals(signals: StockSignals, riskProfile: RiskProfile): string[] {
+  const reasons: string[] = [];
+  
+  if (signals.trend === "positive") reasons.push("Strong upward momentum");
+  if (signals.trend === "negative") reasons.push("Weak momentum");
+  if (signals.trend === "flat") reasons.push("Stable trend");
+  
+  if (signals.volatility === "high") {
+    reasons.push(riskProfile === "Low" ? "High volatility for your selected risk level" : "Elevated volatility");
+  } else if (signals.volatility === "low") {
+    reasons.push("Low volatility suitable for your risk profile");
+  }
+  
+  if (signals.marketCap === "large") reasons.push("Large-cap stability");
+  if (signals.marketCap === "mid") reasons.push("Balanced growth and stability");
+  if (signals.marketCap === "small") reasons.push("High growth potential");
+  
+  return reasons;
 }
 
 export class SIPService {
@@ -103,15 +125,19 @@ export class SIPService {
     // STEP 2: SCORING (Improved)
     // =========================
     portfolio.forEach(item => {
-      const s = aiSignals[item.ticker];
+      let s = aiSignals[item.ticker];
 
       if (!s) {
         excluded.push({
           ticker: item.ticker,
-          reason: "Insufficient market data"
+          reasons: ["Insufficient market data"]
         });
         return;
       }
+
+      // Safety Fallbacks
+      if (!s.sector) s.sector = "Other";
+      if (!s.marketCap) s.marketCap = "large";
 
       // 1. Trend Score
       let trendScore = s.trend === "positive" ? 9 :
@@ -123,22 +149,22 @@ export class SIPService {
 
       // 3. Underweight Boost (<15% + positive trend)
       if (item.weight < 15 && s.trend === "positive") {
-        trendScore += 2.0; // Increased boost for recovery/growth
+        trendScore += 2.0;
       }
 
       // 4. Risk Profile Adjustments
       if (riskProfile === "Low") {
-        if (s.marketCap === "large") stabilityScore += 3; // Prefer large cap for Low risk
+        if (s.marketCap === "large") stabilityScore += 3;
       } else if (riskProfile === "High") {
-        if (s.marketCap === "small") trendScore += 1.5; // Allow more small cap for High risk
+        if (s.marketCap === "small") trendScore += 1.5;
       }
 
       // 5. Horizon Adjustments
       if (horizon >= 5 && s.trend === "negative") {
-        trendScore += 2.5; // Long-term recovery play boost
+        trendScore += 2.5;
       }
       if (horizon <= 2 && s.volatility === "high") {
-        trendScore -= 3.0; // Penalize short-term volatility
+        trendScore -= 3.0;
       }
 
       // 6. Volatility Penalty (Scaled by Risk Profile)
@@ -148,8 +174,8 @@ export class SIPService {
       }
 
       // 7. Proportional Penalties (Scaled with weight)
-      const sectorPenalty = Math.min(10, (sectorWeights[s.sector] || 0) / 4); // More aggressive penalty
-      const weightPenalty = Math.min(10, item.weight / 3); // More aggressive penalty
+      const sectorPenalty = Math.min(10, (sectorWeights[s.sector] || 0) / 4);
+      const weightPenalty = Math.min(10, item.weight / 3);
 
       let finalScore =
         (0.4 * trendScore) +
@@ -164,7 +190,7 @@ export class SIPService {
       if (finalScore < 4) {
         excluded.push({
           ticker: item.ticker,
-          reason: "Avoid this cycle: Low score",
+          reasons: generateReasonsFromSignals(s, riskProfile),
           score: Number(finalScore.toFixed(1))
         });
         return;
@@ -174,7 +200,7 @@ export class SIPService {
       if (overConcentratedSector && s.sector === overConcentratedSector && finalScore < 5) {
         excluded.push({
           ticker: item.ticker,
-          reason: "Avoid this cycle: Sector overexposure",
+          reasons: ["Sector overexposure"],
           score: Number(finalScore.toFixed(1))
         });
         return;
@@ -192,8 +218,13 @@ export class SIPService {
         allocations: [],
         excluded,
         totalAmount: sipAmount,
-        explanation: `All stocks were excluded due to high ${riskType.toLowerCase()}.`,
-        meta: { riskType, overConcentratedSector }
+        explanation: "No suitable opportunities this cycle. Hold cash.",
+        meta: { 
+          riskType, 
+          overConcentratedSector,
+          cashReserve: sipAmount,
+          recommendation: "HOLD_CASH"
+        }
       };
     }
 
@@ -226,37 +257,46 @@ export class SIPService {
       if (!selectedSet.has(c.ticker)) {
         excluded.push({
           ticker: c.ticker,
-          reason: "Lower priority this cycle"
+          reasons: ["Lower priority this cycle"]
         });
       }
     });
 
     // =========================
-    // STEP 4: ALLOCATION (Fixed for Sector Over-concentration)
+    // STEP 4: ALLOCATION
     // =========================
+    const MAX_STOCK_CAP = 0.4;
     const totalScore = selected.reduce((sum, s) => sum + s.finalScore, 0);
     
     // Sector tracking and cap enforcement
     const SECTOR_CAP = 0.6 * sipAmount; // Max 60% per sector
-    const sectorAllocated: Record<string, number> = {}; // Track how much SIP is being allocated per sector
+    const sectorAllocated: Record<string, number> = {}; 
     const tempAllocations: any[] = [];
     
     let remainingSip = sipAmount;
+    let cashReserve = 0;
 
-    // First pass: Proportional allocation with sector capping
-    // BUG 1 FIX: Rounding to nearest 100 at the time of allocation to keep remainingSip consistent
+    // First pass: Proportional allocation with caps
     selected.forEach(s => {
-      const targetShare = (s.finalScore / totalScore) * sipAmount;
-      const currentSectorTotal = sectorAllocated[s.signals.sector] || 0;
+      let targetShare = (s.finalScore / totalScore) * sipAmount;
       
-      // Cap enforcement: check if proposed allocation exceeds sector limit
-      let actualShare = targetShare;
-      if (currentSectorTotal + targetShare > SECTOR_CAP) {
-        // Reduce allocation to fit within cap
-        actualShare = Math.max(0, SECTOR_CAP - currentSectorTotal);
+      // Enforce MAX_STOCK_CAP (40%)
+      if (targetShare > sipAmount * MAX_STOCK_CAP) {
+        const excess = targetShare - (sipAmount * MAX_STOCK_CAP);
+        targetShare = sipAmount * MAX_STOCK_CAP;
+        cashReserve += excess;
       }
 
-      const amount = Math.floor(actualShare / 100) * 100;
+      const currentSectorTotal = sectorAllocated[s.signals.sector] || 0;
+      
+      // Enforce SECTOR_CAP (60%)
+      if (currentSectorTotal + targetShare > SECTOR_CAP) {
+        const actualShare = Math.max(0, SECTOR_CAP - currentSectorTotal);
+        cashReserve += (targetShare - actualShare);
+        targetShare = actualShare;
+      }
+
+      const amount = Math.floor(targetShare / 100) * 100;
       sectorAllocated[s.signals.sector] = currentSectorTotal + amount;
       remainingSip -= amount;
 
@@ -264,13 +304,23 @@ export class SIPService {
         ticker: s.ticker,
         amount,
         signals: s.signals,
-        score: s.finalScore
+        score: s.finalScore,
+        reasons: generateReasonsFromSignals(s.signals, riskProfile)
       });
     });
 
-    // Redistribution: Ensure total SIP is fully allocated by moving remainder to other sectors
-    if (remainingSip > 0) {
-      const uncappedStocks = tempAllocations.filter(a => (sectorAllocated[a.signals.sector] || 0) < SECTOR_CAP);
+    // If selected stocks < 3: DO NOT force full deployment
+    if (selected.length < 3) {
+      cashReserve += remainingSip;
+      remainingSip = 0;
+    }
+
+    // Redistribution: Only if we have 3+ stocks and remaining funds
+    if (remainingSip > 0 && selected.length >= 3) {
+      const uncappedStocks = tempAllocations.filter(a => 
+        (sectorAllocated[a.signals.sector] || 0) < SECTOR_CAP &&
+        a.amount < sipAmount * MAX_STOCK_CAP
+      );
       
       if (uncappedStocks.length > 0) {
         const uncappedTotalScore = uncappedStocks.reduce((sum, a) => sum + a.score, 0);
@@ -279,10 +329,10 @@ export class SIPService {
         uncappedStocks.forEach(a => {
           const extra = (a.score / uncappedTotalScore) * sipToDistribute;
           const currentSectorTotal = sectorAllocated[a.signals.sector] || 0;
-          const allowedExtra = Math.max(0, SECTOR_CAP - currentSectorTotal);
+          const allowedBySector = Math.max(0, SECTOR_CAP - currentSectorTotal);
+          const allowedByStock = Math.max(0, (sipAmount * MAX_STOCK_CAP) - a.amount);
           
-          // BUG 1 FIX: Use rounded values for redistribution to keep remainingSip consistent
-          const actualExtra = Math.floor(Math.min(extra, allowedExtra) / 100) * 100;
+          const actualExtra = Math.floor(Math.min(extra, allowedBySector, allowedByStock) / 100) * 100;
           
           a.amount += actualExtra;
           sectorAllocated[a.signals.sector] += actualExtra;
@@ -291,94 +341,42 @@ export class SIPService {
       }
     }
 
-    // BUG 2 FIX: Controlled fallback instead of dumping everything into one stock
-    // Respect SECTOR_CAP for each sector during fallback distribution
-    if (remainingSip > 0) {
-      for (const a of tempAllocations) {
-        if (remainingSip <= 0) break;
-        const currentSectorTotal = sectorAllocated[a.signals.sector] || 0;
-        const allowedExtra = Math.max(0, SECTOR_CAP - currentSectorTotal);
-        const actualExtra = Math.min(remainingSip, allowedExtra);
-        
-        if (actualExtra > 0) {
-          a.amount += actualExtra;
-          sectorAllocated[a.signals.sector] += actualExtra;
-          remainingSip -= actualExtra;
-        }
-      }
-      
-      // Final fallback if still remaining (all sectors capped)
-      if (remainingSip > 0 && tempAllocations.length > 0) {
-        tempAllocations[0].amount += remainingSip;
-        remainingSip = 0;
-      }
-    }
+    // Any remaining SIP goes to cashReserve (NEVER dump into first stock)
+    cashReserve += remainingSip;
+    remainingSip = 0;
 
-    // BUG 3 FIX: Handle MIN_ALLOCATION removal and return funds to remainingSip
+    // Final Pass: Handle MIN_ALLOCATION and move to cashReserve if too small
     const allocations: StockAllocation[] = [];
-    let finalPassRemainingSip = 0;
-
     tempAllocations.forEach(a => {
-      // Rounding check (redundant but safe)
-      const roundedAmount = Math.floor(a.amount / 100) * 100;
-
-      if (roundedAmount < MIN_ALLOCATION) {
+      if (a.amount < MIN_ALLOCATION) {
         excluded.push({
           ticker: a.ticker,
-          reason: `Allocation too small (₹${roundedAmount}) after sector capping`,
+          reasons: [`Allocation too small (₹${a.amount})`],
           score: Number(a.score.toFixed(1))
         });
-        // Return amount to pool and update sector tracking
-        finalPassRemainingSip += roundedAmount;
-        sectorAllocated[a.signals.sector] -= roundedAmount;
+        cashReserve += a.amount;
       } else {
         allocations.push({
           ticker: a.ticker,
-          amount: roundedAmount,
-          percentage: 0,
+          amount: a.amount,
+          percentage: Number(((a.amount / sipAmount) * 100).toFixed(2)),
           signals: a.signals,
-          score: Number(a.score.toFixed(1))
+          score: Number(a.score.toFixed(1)),
+          reasons: a.reasons
         });
       }
     });
 
-    // Redistribute funds from removed stocks safely using sector-cap-aware logic
-    if (finalPassRemainingSip > 0 && allocations.length > 0) {
-      for (const a of allocations) {
-        if (finalPassRemainingSip <= 0) break;
-        const currentSectorTotal = sectorAllocated[a.signals.sector] || 0;
-        const allowedExtra = Math.max(0, SECTOR_CAP - currentSectorTotal);
-        const actualExtra = Math.min(finalPassRemainingSip, allowedExtra);
-        
-        if (actualExtra > 0) {
-          a.amount += actualExtra;
-          sectorAllocated[a.signals.sector] += actualExtra;
-          finalPassRemainingSip -= actualExtra;
-        }
-      }
-      
-      // Absolute last resort fallback to maintain total SIP amount
-      if (finalPassRemainingSip > 0) {
-        allocations[0].amount += finalPassRemainingSip;
-        finalPassRemainingSip = 0;
-      }
-    }
-
-    // Final rounding fix to ensure totalAmount === sipAmount exactly (Safety check)
-    const finalSum = allocations.reduce((sum, a) => sum + a.amount, 0);
-    const finalRemainder = sipAmount - finalSum;
-    if (finalRemainder !== 0 && allocations.length > 0) {
-      allocations[0].amount += finalRemainder;
-    }
-
-    // Final percentages
-    allocations.forEach(a => {
-      a.percentage = Number(((a.amount / sipAmount) * 100).toFixed(2));
-    });
-
-    // Generate explanation for backward compatibility
+    // Final cash reserve calculation
+    const finalCashReserve = Math.floor(cashReserve);
     const topTickers = allocations.map(a => a.ticker).join(", ");
-    const explanation = `We've selected ${allocations.length} stocks (${topTickers}) based on their strong momentum and stability scores. ${excluded.length > 0 ? `${excluded.length} stocks were excluded due to low scores or high risk.` : ""} This strategy is optimized for a ${riskProfile.toLowerCase()} risk profile over a ${horizon}-year horizon.`;
+    let explanation = allocations.length > 0 
+      ? `We've selected ${allocations.length} stocks (${topTickers}) based on their momentum and stability.`
+      : "No suitable opportunities this cycle. Hold cash.";
+    
+    if (finalCashReserve > 0) {
+      explanation += ` A cash reserve of ₹${finalCashReserve.toLocaleString()} is recommended for better future opportunities.`;
+    }
 
     return {
       allocations,
@@ -387,7 +385,9 @@ export class SIPService {
       explanation,
       meta: {
         riskType,
-        overConcentratedSector
+        overConcentratedSector,
+        cashReserve: finalCashReserve,
+        recommendation: allocations.length === 0 ? "HOLD_CASH" : undefined
       }
     };
   }

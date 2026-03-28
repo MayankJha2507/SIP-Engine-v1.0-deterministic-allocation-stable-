@@ -37,12 +37,12 @@ export interface StockAllocation {
   percentage: number;
   signals: any;
   score: number;
-  reason?: string;
+  reasons?: string[];
 }
 
 export interface ExcludedStock {
   ticker: string;
-  reason: string;
+  reasons: string[];
   score?: number;
 }
 

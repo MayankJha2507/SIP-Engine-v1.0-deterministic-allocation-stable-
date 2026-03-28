@@ -41,6 +41,7 @@ export default function PortfolioAnalyzer({ history, setHistory }: PortfolioAnal
   const [allocations, setAllocations] = useState<any[] | null>(null);
   const [excluded, setExcluded] = useState<any[]>([]);
   const [explanation, setExplanation] = useState<string>("");
+  const [meta, setMeta] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [loadingFact, setLoadingFact] = useState("");
   const [showSuggestions, setShowSuggestions] = useState(false);
@@ -56,6 +57,7 @@ export default function PortfolioAnalyzer({ history, setHistory }: PortfolioAnal
     localStorage.setItem("currentResult", JSON.stringify(result));
     localStorage.setItem("currentAllocation", JSON.stringify(allocations));
     localStorage.setItem("currentExplanation", explanation);
+    localStorage.setItem("currentMeta", JSON.stringify(meta));
     localStorage.setItem("currentSipAmount", sipAmount.toString());
     localStorage.setItem("currentRiskProfile", riskProfile);
     localStorage.setItem("currentHorizon", horizon.toString());
@@ -153,6 +155,7 @@ export default function PortfolioAnalyzer({ history, setHistory }: PortfolioAnal
       setAllocations(data.allocations);
       setExcluded(data.excluded || []);
       setExplanation(data.explanation);
+      setMeta(data.meta);
 
       // Save to history
       const newHistoryItem: HistoryItem = {
@@ -702,13 +705,20 @@ export default function PortfolioAnalyzer({ history, setHistory }: PortfolioAnal
                               </div>
                               <div>
                                 <div className="text-[10px] font-bold text-amber-600 dark:text-amber-400 uppercase tracking-widest mb-1">Why this stock?</div>
-                                <p className="text-xs text-gray-700 dark:text-gray-200 leading-relaxed font-medium">
-                                  {alloc.reason?.includes("Insufficient market data") ? (
-                                    <span className="text-red-500 font-bold">⚠️ Limited data available for this stock</span>
+                                <div className="text-xs text-gray-700 dark:text-gray-200 leading-relaxed font-medium">
+                                  {alloc.reasons && alloc.reasons.length > 0 ? (
+                                    <ul className="space-y-1">
+                                      {alloc.reasons.map((r: string, i: number) => (
+                                        <li key={i} className="flex items-start gap-1.5">
+                                          <span className="mt-1.5 w-1 h-1 rounded-full bg-amber-500 shrink-0" />
+                                          <span>{r}</span>
+                                        </li>
+                                      ))}
+                                    </ul>
                                   ) : (
-                                    alloc.reason || "Selected for its strong momentum and stability within your risk profile."
+                                    <p>Selected for its strong momentum and stability within your risk profile.</p>
                                   )}
-                                </p>
+                                </div>
                               </div>
                             </div>
                           </div>
@@ -729,7 +739,20 @@ export default function PortfolioAnalyzer({ history, setHistory }: PortfolioAnal
                           <div className="flex items-center gap-3">
                             <span className="font-bold text-sm text-red-700 dark:text-red-400">{e.ticker}</span>
                             <div className="flex flex-col">
-                              <span className="text-[10px] text-red-600/70 dark:text-red-400/70 italic truncate max-w-[150px]">{e.reason}</span>
+                              <div className="text-[10px] text-red-600/70 dark:text-red-400/70 italic">
+                                <div className="flex flex-wrap gap-x-2">
+                                  {e.reasons && e.reasons.length > 0 ? (
+                                    e.reasons.map((r: string, i: number) => (
+                                      <span key={i} className="flex items-center gap-1">
+                                        <span className="w-1 h-1 rounded-full bg-red-400/50" />
+                                        {r}
+                                      </span>
+                                    ))
+                                  ) : (
+                                    <span>Lower priority this cycle</span>
+                                  )}
+                                </div>
+                              </div>
                               {e.score !== undefined && (
                                 <span className="text-[9px] font-bold text-red-500/60 uppercase tracking-wider">Score: {e.score}/10</span>
                               )}
@@ -738,6 +761,24 @@ export default function PortfolioAnalyzer({ history, setHistory }: PortfolioAnal
                           <AlertTriangle className="w-3 h-3 text-red-400" />
                         </div>
                       ))}
+                    </div>
+                  </div>
+                )}
+
+                {meta?.cashReserve > 0 && (
+                  <div className="mt-6 p-6 bg-gray-50 dark:bg-[#1a1a1a] rounded-[28px] border border-gray-200 dark:border-[#333] flex items-center justify-between shadow-sm">
+                    <div className="flex items-center gap-4">
+                      <div className="w-12 h-12 bg-white dark:bg-[#222] rounded-2xl flex items-center justify-center border border-gray-200 dark:border-[#333] font-bold text-xs shadow-sm">
+                        <ShieldCheck className="w-6 h-6 text-blue-500" />
+                      </div>
+                      <div>
+                        <div className="text-lg font-bold">₹{meta.cashReserve.toLocaleString()}</div>
+                        <div className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">Cash Reserve</div>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-xs font-bold text-gray-400 uppercase tracking-tighter">Safety Buffer</div>
+                      <div className="text-[10px] text-gray-500 italic">₹{meta.cashReserve.toLocaleString()} held back for better opportunities</div>
                     </div>
                   </div>
                 )}

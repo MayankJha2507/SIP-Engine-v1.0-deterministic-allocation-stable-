@@ -20,6 +20,11 @@ export interface AnalyzeResponse {
   excluded: ExcludedStock[];
   explanation: string;
   totalAmount?: number;
+  meta?: {
+    riskType: string;
+    overConcentratedSector?: string;
+    cashReserve?: number;
+  };
 }
 
 async function mockAnalyze(req: AnalyzeRequest): Promise<AnalyzeResponse> {
@@ -39,13 +44,14 @@ async function mockAnalyze(req: AnalyzeRequest): Promise<AnalyzeResponse> {
           amount,
           percentage: Number(((amount / req.sip_amount) * 100).toFixed(2)),
           signals,
-          score: 8.5 - index
+          score: 8.5 - index,
+          reasons: ["Strong upward momentum", "Large-cap stability"]
         };
       });
 
       const excluded: ExcludedStock[] = req.portfolio.slice(3).map(item => ({
         ticker: item.ticker,
-        reason: "Lower priority this cycle",
+        reasons: ["Lower priority this cycle"],
         score: 4.2
       }));
 
