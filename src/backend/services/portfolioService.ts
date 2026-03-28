@@ -15,7 +15,7 @@ export interface SectorAllocation {
 }
 
 export interface MarketCapAllocation {
-  category: "Large Cap" | "Mid Cap" | "Small Cap" | "Unknown";
+  category: "large" | "mid" | "small" | "unknown";
   weight: number;
 }
 
@@ -30,7 +30,7 @@ export interface AnalysisResult {
 }
 
 export class PortfolioService {
-  async analyzePortfolio(items: PortfolioItem[]): Promise<AnalysisResult> {
+  async analyzePortfolio(items: PortfolioItem[], signals: Record<string, any> = {}): Promise<AnalysisResult> {
     const totalWeight = items.reduce((sum, item) => sum + item.weight, 0);
     
     const overweight = items
@@ -56,33 +56,25 @@ export class PortfolioService {
     // Sector Allocation
     const sectorMap: Record<string, number> = {};
     const marketCapMap: Record<string, number> = {
-      "Large Cap": 0,
-      "Mid Cap": 0,
-      "Small Cap": 0,
-      "Unknown": 0
+      "large": 0,
+      "mid": 0,
+      "small": 0,
+      "unknown": 0
     };
 
     for (const item of items) {
-      const info = await stockDataService.getStockInfo(item.ticker);
-      const sector = info?.sector || 'Unknown';
+      const signal = signals[item.ticker];
+      
+      // 1. Sector Allocation
+      const sector = signal?.sector || 'Other';
       sectorMap[sector] = (sectorMap[sector] || 0) + item.weight;
 
-      // Market Cap Categorization
-      if (info?.marketCap) {
-        const mc = info.marketCap;
-        const curr = info.currency || 'INR';
-        
-        let category: "Large Cap" | "Mid Cap" | "Small Cap" = "Small Cap";
-        if (curr === 'INR') {
-          if (mc > 500000000000) category = "Large Cap";
-          else if (mc > 150000000000) category = "Mid Cap";
-        } else { // Assume USD or other
-          if (mc > 10000000000) category = "Large Cap";
-          else if (mc > 2000000000) category = "Mid Cap";
-        }
-        marketCapMap[category] += item.weight;
+      // 2. Market Cap Allocation
+      const mc = signal?.marketCap?.toLowerCase();
+      if (mc === 'large' || mc === 'mid' || mc === 'small') {
+        marketCapMap[mc as keyof typeof marketCapMap] += item.weight;
       } else {
-        marketCapMap["Unknown"] += item.weight;
+        marketCapMap["unknown"] += item.weight;
       }
     }
 

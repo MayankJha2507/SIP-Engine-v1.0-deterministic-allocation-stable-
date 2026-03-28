@@ -108,7 +108,7 @@ export class SIPService {
       if (!s) {
         excluded.push({
           ticker: item.ticker,
-          reason: "Missing market signals"
+          reason: "Insufficient market data"
         });
         return;
       }

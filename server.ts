@@ -19,7 +19,7 @@ async function startServer() {
 
   // API Routes
   app.get("/api/health", (req, res) => {
-    res.json({ status: "ok", app: "SIPSense" });
+    res.status(200).json({ status: "ok" });
   });
 
   // Modular Routes

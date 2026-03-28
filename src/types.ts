@@ -16,7 +16,7 @@ export interface SectorAllocation {
 }
 
 export interface MarketCapAllocation {
-  category: "Large Cap" | "Mid Cap" | "Small Cap" | "Unknown";
+  category: "large" | "mid" | "small" | "unknown";
   weight: number;
 }
 

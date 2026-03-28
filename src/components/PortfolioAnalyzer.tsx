@@ -490,14 +490,14 @@ export default function PortfolioAnalyzer({ history, setHistory }: PortfolioAnal
                       )}
                     </div>
 
-                    {result.marketCapAllocation && result.marketCapAllocation.length > 0 && (
-                      <div className="p-4 bg-[#f9f9f9] dark:bg-[#1a1a1a] rounded-2xl">
-                        <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3">Market Cap Breakdown</div>
+                    <div className="p-4 bg-[#f9f9f9] dark:bg-[#1a1a1a] rounded-2xl">
+                      <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3">Market Cap Breakdown</div>
+                      {result.marketCapAllocation && result.marketCapAllocation.length > 0 ? (
                         <div className="space-y-3">
                           {result.marketCapAllocation.map((item) => (
                             <div key={item.category}>
                               <div className="flex justify-between text-[10px] mb-1">
-                                <span className="font-bold">{item.category}</span>
+                                <span className="font-bold uppercase">{item.category}</span>
                                 <span>{item.weight}%</span>
                               </div>
                               <div className="w-full bg-gray-200 dark:bg-[#333] rounded-full h-1">
@@ -505,22 +505,24 @@ export default function PortfolioAnalyzer({ history, setHistory }: PortfolioAnal
                                   initial={{ width: 0 }}
                                   animate={{ width: `${item.weight}%` }}
                                   className={`h-1 rounded-full ${
-                                    item.category === "Large Cap" ? "bg-green-500" :
-                                    item.category === "Mid Cap" ? "bg-blue-500" :
-                                    item.category === "Small Cap" ? "bg-orange-500" : "bg-gray-400"
+                                    item.category === "large" ? "bg-green-500" :
+                                    item.category === "mid" ? "bg-blue-500" :
+                                    item.category === "small" ? "bg-orange-500" : "bg-gray-400"
                                   }`}
                                 />
                               </div>
                             </div>
                           ))}
                         </div>
-                      </div>
-                    )}
+                      ) : (
+                        <p className="text-[10px] text-gray-400 italic">Data unavailable</p>
+                      )}
+                    </div>
 
                     {/* Sector Allocation Integrated into Health */}
-                    {result.sectorAllocation && result.sectorAllocation.length > 0 && (
-                      <div className="p-4 bg-[#f9f9f9] dark:bg-[#1a1a1a] rounded-2xl">
-                        <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3">Sector Exposure</div>
+                    <div className="p-4 bg-[#f9f9f9] dark:bg-[#1a1a1a] rounded-2xl">
+                      <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3">Sector Exposure</div>
+                      {result.sectorAllocation && result.sectorAllocation.length > 0 ? (
                         <div className="grid grid-cols-2 gap-3">
                           {result.sectorAllocation.slice(0, 4).map((item) => (
                             <div key={item.sector} className="space-y-1">
@@ -537,8 +539,10 @@ export default function PortfolioAnalyzer({ history, setHistory }: PortfolioAnal
                             </div>
                           ))}
                         </div>
-                      </div>
-                    )}
+                      ) : (
+                        <p className="text-[10px] text-gray-400 italic">Data unavailable</p>
+                      )}
+                    </div>
                   </div>
                 </div>
 
@@ -630,64 +634,88 @@ export default function PortfolioAnalyzer({ history, setHistory }: PortfolioAnal
                 </div>
 
                 <div className="grid grid-cols-1 gap-4">
-                  {allocations.map((alloc) => (
-                    <div key={alloc.ticker} className="group">
-                      <div className="flex flex-col md:flex-row md:items-center justify-between p-6 bg-[#f9f9f9] dark:bg-[#1a1a1a] rounded-[28px] border border-[#eee] dark:border-[#333] group-hover:border-gray-300 dark:group-hover:border-gray-600 transition-all gap-6">
-                        <div className="flex items-center gap-5">
-                          <div className="w-14 h-14 bg-white dark:bg-[#222] rounded-2xl flex items-center justify-center border border-[#eee] dark:border-[#333] font-bold text-sm shadow-sm">
-                            {alloc.ticker}
-                          </div>
-                          <div>
-                            <div className="text-lg font-bold">₹{alloc.amount.toLocaleString()}</div>
-                            <div className="text-xs text-gray-400 font-medium">{alloc.percentage}% of Monthly SIP</div>
-                          </div>
+                  {allocations.length === 0 ? (
+                    <div className="bg-amber-50 dark:bg-amber-900/10 p-8 rounded-[32px] border border-amber-100 dark:border-amber-900/30 text-center space-y-4">
+                      <div className="w-16 h-16 bg-amber-100 dark:bg-amber-900/30 rounded-full flex items-center justify-center mx-auto">
+                        <AlertTriangle className="w-8 h-8 text-amber-600 dark:text-amber-400" />
+                      </div>
+                      <div className="space-y-2">
+                        <h4 className="text-xl font-bold text-amber-900 dark:text-amber-100">No Investment This Cycle</h4>
+                        <p className="text-sm text-amber-800/80 dark:text-amber-300/80 max-w-md mx-auto">
+                          No stocks meet the criteria for investment this cycle based on current market signals and your risk profile.
+                        </p>
+                      </div>
+                      <div className="pt-4">
+                        <div className="inline-flex items-center gap-2 px-6 py-3 bg-white dark:bg-[#222] rounded-2xl border border-amber-200 dark:border-amber-900/30 text-sm font-bold text-amber-700 dark:text-amber-400 shadow-sm">
+                          <Info className="w-4 h-4" />
+                          💡 Recommendation: Hold your SIP amount as cash for this cycle.
                         </div>
-
-                        {alloc.signals && (
-                          <div className="flex gap-4">
-                            <div className="text-center">
-                              <div className="text-[10px] font-bold text-gray-400 uppercase tracking-tighter">Trend</div>
-                              <div className={`text-[10px] font-bold uppercase ${alloc.signals.trend === "positive" ? "text-green-500" : alloc.signals.trend === "flat" ? "text-blue-500" : "text-red-500"}`}>
-                                {alloc.signals.trend}
-                              </div>
-                            </div>
-                            <div className="text-center">
-                              <div className="text-[10px] font-bold text-gray-400 uppercase tracking-tighter">Volatility</div>
-                              <div className={`text-[10px] font-bold uppercase ${alloc.signals.volatility === "low" ? "text-green-500" : alloc.signals.volatility === "medium" ? "text-blue-500" : "text-red-500"}`}>
-                                {alloc.signals.volatility}
-                              </div>
-                            </div>
-                            <div className="text-center">
-                              <div className="text-[10px] font-bold text-gray-400 uppercase tracking-tighter">Cap</div>
-                              <div className="text-[10px] font-bold uppercase text-gray-600 dark:text-gray-300">
-                                {alloc.signals.marketCap}
-                              </div>
-                            </div>
-                            <div className="text-center border-l border-[#eee] dark:border-[#333] pl-4">
-                              <div className="text-[10px] font-bold text-gray-400 uppercase tracking-tighter">Score</div>
-                              <div className="text-xs font-bold text-[#1a1a1a] dark:text-[#f5f5f5]">
-                                {alloc.score}/10
-                              </div>
-                            </div>
-                          </div>
-                        )}
-                        
-                        <div className="flex-1">
-                          <div className="flex items-start gap-3 p-4 bg-amber-50/30 dark:bg-amber-900/5 rounded-2xl border border-amber-100/50 dark:border-amber-900/20">
-                            <div className="mt-0.5">
-                              <Sparkles className="w-4 h-4 text-amber-500" />
+                      </div>
+                    </div>
+                  ) : (
+                    allocations.map((alloc) => (
+                      <div key={alloc.ticker} className="group">
+                        <div className="flex flex-col md:flex-row md:items-center justify-between p-6 bg-[#f9f9f9] dark:bg-[#1a1a1a] rounded-[28px] border border-[#eee] dark:border-[#333] group-hover:border-gray-300 dark:group-hover:border-gray-600 transition-all gap-6">
+                          <div className="flex items-center gap-5">
+                            <div className="w-14 h-14 bg-white dark:bg-[#222] rounded-2xl flex items-center justify-center border border-[#eee] dark:border-[#333] font-bold text-sm shadow-sm">
+                              {alloc.ticker}
                             </div>
                             <div>
-                              <div className="text-[10px] font-bold text-amber-600 dark:text-amber-400 uppercase tracking-widest mb-1">Why this stock?</div>
-                              <p className="text-xs text-gray-700 dark:text-gray-200 leading-relaxed font-medium">
-                                {alloc.reason || "Selected for its strong momentum and stability within your risk profile."}
-                              </p>
+                              <div className="text-lg font-bold">₹{alloc.amount.toLocaleString()}</div>
+                              <div className="text-xs text-gray-400 font-medium">{alloc.percentage}% of Monthly SIP</div>
+                            </div>
+                          </div>
+
+                          {alloc.signals && (
+                            <div className="flex gap-4">
+                              <div className="text-center">
+                                <div className="text-[10px] font-bold text-gray-400 uppercase tracking-tighter">Trend</div>
+                                <div className={`text-[10px] font-bold uppercase ${alloc.signals.trend === "positive" ? "text-green-500" : alloc.signals.trend === "flat" ? "text-blue-500" : "text-red-500"}`}>
+                                  {alloc.signals.trend}
+                                </div>
+                              </div>
+                              <div className="text-center">
+                                <div className="text-[10px] font-bold text-gray-400 uppercase tracking-tighter">Volatility</div>
+                                <div className={`text-[10px] font-bold uppercase ${alloc.signals.volatility === "low" ? "text-green-500" : alloc.signals.volatility === "medium" ? "text-blue-500" : "text-red-500"}`}>
+                                  {alloc.signals.volatility}
+                                </div>
+                              </div>
+                              <div className="text-center">
+                                <div className="text-[10px] font-bold text-gray-400 uppercase tracking-tighter">Cap</div>
+                                <div className="text-[10px] font-bold uppercase text-gray-600 dark:text-gray-300">
+                                  {alloc.signals.marketCap}
+                                </div>
+                              </div>
+                              <div className="text-center border-l border-[#eee] dark:border-[#333] pl-4">
+                                <div className="text-[10px] font-bold text-gray-400 uppercase tracking-tighter">Score</div>
+                                <div className="text-xs font-bold text-[#1a1a1a] dark:text-[#f5f5f5]">
+                                  {alloc.score}/10
+                                </div>
+                              </div>
+                            </div>
+                          )}
+                          
+                          <div className="flex-1">
+                            <div className="flex items-start gap-3 p-4 bg-amber-50/30 dark:bg-amber-900/5 rounded-2xl border border-amber-100/50 dark:border-amber-900/20">
+                              <div className="mt-0.5">
+                                <Sparkles className="w-4 h-4 text-amber-500" />
+                              </div>
+                              <div>
+                                <div className="text-[10px] font-bold text-amber-600 dark:text-amber-400 uppercase tracking-widest mb-1">Why this stock?</div>
+                                <p className="text-xs text-gray-700 dark:text-gray-200 leading-relaxed font-medium">
+                                  {alloc.reason?.includes("Insufficient market data") ? (
+                                    <span className="text-red-500 font-bold">⚠️ Limited data available for this stock</span>
+                                  ) : (
+                                    alloc.reason || "Selected for its strong momentum and stability within your risk profile."
+                                  )}
+                                </p>
+                              </div>
                             </div>
                           </div>
                         </div>
                       </div>
-                    </div>
-                  ))}
+                    ))
+                  )}
                 </div>
 
                 {excluded.length > 0 && (
