@@ -21,20 +21,14 @@ router.post("/", async (req, res) => {
     // 1. Get AI signals if not provided (moving AI logic to backend)
     if (!aiSignals || Object.keys(aiSignals).length === 0) {
       const horizonYears = typeof horizon === 'string' ? parseInt(horizon) : horizon;
-      try {
-        const aiResponse = await geminiService.getStockSignals(
-          portfolio,
-          sip_amount,
-          risk_profile,
-          horizonYears
-        );
-        aiSignals = aiResponse.signals;
-        aiStrategy = aiResponse.strategy;
-      } catch (e) {
-        console.error("Gemini signals failed, using fallback", e);
-        aiSignals = {};
-        aiStrategy = "Market conditions are mixed. Focus on diversification and long-term discipline.";
-      }
+      const aiResponse = await geminiService.getStockSignals(
+        portfolio,
+        sip_amount,
+        risk_profile,
+        horizonYears
+      );
+      aiSignals = aiResponse.signals;
+      aiStrategy = aiResponse.strategy;
     }
 
     if (!aiStrategy) {

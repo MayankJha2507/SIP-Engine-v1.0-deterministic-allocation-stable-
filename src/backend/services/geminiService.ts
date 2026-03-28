@@ -85,8 +85,40 @@ export const geminiService = {
         strategy: result.strategy || ""
       };
     } catch (error) {
-      console.error("Gemini stock signal analysis failed:", error);
-      return { signals: {}, strategy: "" };
+      console.warn("Gemini stock signal analysis failed, using fallback signals:", error);
+      return this.generateFallbackSignals(portfolio);
     }
+  },
+
+  generateFallbackSignals(portfolio: any[]): { 
+    signals: Record<string, StockSignals>; 
+    strategy: string;
+  } {
+    const sectorMapping: Record<string, string> = {
+      "RELIANCE": "Energy",
+      "TCS": "Technology",
+      "INFY": "Technology",
+      "HDFCBANK": "Banking",
+      "ICICIBANK": "Banking",
+      "BAJFINANCE": "NBFC",
+      "WIPRO": "Technology"
+    };
+
+    const signals: Record<string, StockSignals> = {};
+    
+    portfolio.forEach(item => {
+      signals[item.ticker] = {
+        trend: "flat",
+        volatility: "medium",
+        marketCap: "large",
+        sector: sectorMapping[item.ticker] || "Other",
+        reason: "Market data currently unavailable. Using conservative fallback signals."
+      };
+    });
+
+    return {
+      signals,
+      strategy: "Market insights are currently limited due to a temporary service interruption. We recommend a balanced approach focusing on high-quality large-cap stocks and maintaining sector diversification until full analysis is restored."
+    };
   }
 };
