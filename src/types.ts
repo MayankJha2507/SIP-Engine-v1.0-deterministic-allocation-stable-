@@ -31,6 +31,21 @@ export interface AnalysisResult {
   aiStrategy?: string;
 }
 
+export interface StockAllocation {
+  ticker: string;
+  amount: number;
+  percentage: number;
+  signals: any;
+  score: number;
+  reason?: string;
+}
+
+export interface ExcludedStock {
+  ticker: string;
+  reason: string;
+  score?: number;
+}
+
 export interface HistoryItem {
   id: string;
   timestamp: number;

@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { Search, Plus, Trash2, AlertTriangle, CheckCircle, Info, BarChart3, Calculator, TrendingUp, Sparkles, ShieldCheck, RotateCcw } from "lucide-react";
-import { Stock, PortfolioItem, AnalysisResult, HistoryItem } from "../types";
+import { Stock, PortfolioItem, AnalysisResult, HistoryItem, StockAllocation, ExcludedStock } from "../types";
 import { geminiService } from "../services/geminiService.ts";
+import { apiService } from "../services/apiService.ts";
 
 const POPULAR_STOCKS: Stock[] = [
   { ticker: "RELIANCE", name: "Reliance Industries Ltd.", sector: "Energy", marketCap: "Large Cap" },
@@ -148,19 +149,15 @@ export default function PortfolioAnalyzer({ history, setHistory }: PortfolioAnal
       );
 
       // 2. Call backend for deterministic calculation and analysis
-      const res = await fetch("/api/analyze", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ 
-          portfolio,
-          sip_amount: sipAmount,
-          risk_profile: riskProfile,
-          horizon: `${horizon} years`,
-          aiSignals: aiResponse.signals,
-          aiStrategy: aiResponse.strategy
-        }),
+      const data = await apiService.analyze({ 
+        portfolio,
+        sip_amount: sipAmount,
+        risk_profile: riskProfile,
+        horizon: `${horizon} years`,
+        aiSignals: aiResponse.signals,
+        aiStrategy: aiResponse.strategy
       });
-      const data = await res.json();
+
       setResult(data.analysis);
       setAllocation(data.allocation);
       setExcluded(data.excluded || []);
