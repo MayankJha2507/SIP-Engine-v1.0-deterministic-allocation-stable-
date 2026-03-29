@@ -218,10 +218,10 @@ export class SIPService {
       let macroAdjustment = 0;
       if (macroSignals) {
         if (macroSignals.bullishSectors.includes(s.sector)) {
-          macroAdjustment += 0.5;
+          macroAdjustment += 0.25; // Reduced from 0.5
         }
         if (macroSignals.bearishSectors.includes(s.sector)) {
-          macroAdjustment -= 0.5;
+          macroAdjustment -= 0.25; // Reduced from 0.5
         }
 
         // Scale by horizon
@@ -231,29 +231,29 @@ export class SIPService {
           macroAdjustment *= 0.5;
         }
 
-        // Safety Limit: Clamp to [-1, 1]
-        macroAdjustment = Math.max(-1, Math.min(1, macroAdjustment));
+        // Safety Limit: Clamp to [-0.5, 0.5]
+        macroAdjustment = Math.max(-0.5, Math.min(0.5, macroAdjustment));
       }
 
-      let finalScore =
+      const baseScore =
         (0.4 * trendScore) +
         (0.3 * stabilityScore) -
         (0.2 * sectorPenalty) -
         (0.1 * weightPenalty) -
-        volatilityPenalty +
-        macroAdjustment;
+        volatilityPenalty;
 
-      finalScore = Math.max(0, Math.min(10, finalScore));
-
-      // Exclusion rules
-      if (finalScore < VERY_LOW_THRESHOLD) {
+      // Exclusion rules (based on baseScore, NOT macroAdjustment)
+      if (baseScore < VERY_LOW_THRESHOLD) {
         excluded.push({
           ticker: item.ticker,
-          reasons: generateReasonsFromSignals(s, riskProfile, finalScore),
-          score: Number(finalScore.toFixed(1))
+          reasons: generateReasonsFromSignals(s, riskProfile, baseScore),
+          score: Number(baseScore.toFixed(1))
         });
         return;
       }
+
+      let finalScore = baseScore + macroAdjustment;
+      finalScore = Math.max(0, Math.min(10, finalScore));
 
       // Sector concentration exclusion
       if (overConcentratedSector && s.sector === overConcentratedSector && finalScore < 5) {
@@ -298,11 +298,35 @@ export class SIPService {
       .sort((a, b) => b.finalScore - a.finalScore)
       .slice(0, maxStocks);
 
-    // Ensure minimum selection: Pick top 2 stocks if available
-    if (selected.length < 2 && candidates.length >= 2) {
-      selected = candidates
+    // Ensure minimum selection: Pick top 2 stocks if available (Step 3)
+    if (selected.length < 2 && portfolio.length >= 2) {
+      // If we don't have enough candidates, pick from all stocks in portfolio
+      // but still prefer those with higher scores
+      const allStocksWithScores = portfolio.map(item => {
+        const existingCandidate = candidates.find(c => c.ticker === item.ticker);
+        if (existingCandidate) return existingCandidate;
+        
+        const existingExcluded = excluded.find(e => e.ticker === item.ticker);
+        return {
+          ...item,
+          finalScore: existingExcluded?.score || 0,
+          signals: aiSignals[item.ticker] || { trend: "flat", volatility: "medium", marketCap: "large", sector: "Other" }
+        };
+      });
+
+      selected = allStocksWithScores
         .sort((a, b) => b.finalScore - a.finalScore)
         .slice(0, 2);
+        
+      // Update candidates if we pulled from excluded
+      selected.forEach(s => {
+        if (!candidates.find(c => c.ticker === s.ticker)) {
+          candidates.push(s as any);
+          // Remove from excluded
+          const idx = excluded.findIndex(e => e.ticker === s.ticker);
+          if (idx !== -1) excluded.splice(idx, 1);
+        }
+      });
     }
 
     // Ensure diversification
@@ -344,8 +368,22 @@ export class SIPService {
 
     // First pass: Proportional allocation with caps
     selected.forEach(s => {
+      const reasons = generateReasonsFromSignals(s.signals, riskProfile, s.finalScore);
+      const isNegative = reasons.some(r => 
+        r.toLowerCase().includes("unfavorable") || 
+        r.toLowerCase().includes("weak momentum") || 
+        r.toLowerCase().includes("high risk")
+      );
+
       let targetShare = (s.finalScore / totalScore) * sipAmount;
       
+      // Step 2: Reasoning Consistency Rule
+      if (isNegative && targetShare > MIN_ALLOCATION) {
+        const excess = targetShare - MIN_ALLOCATION;
+        targetShare = MIN_ALLOCATION;
+        cashReserve += excess;
+      }
+
       // Enforce MAX_STOCK_CAP (40%)
       if (targetShare > sipAmount * MAX_STOCK_CAP) {
         const excess = targetShare - (sipAmount * MAX_STOCK_CAP);
@@ -371,29 +409,29 @@ export class SIPService {
         amount,
         signals: s.signals,
         score: s.finalScore,
-        reasons: generateReasonsFromSignals(s.signals, riskProfile, s.finalScore)
+        reasons
       });
     });
 
-    // If selected stocks < 3: DO NOT force full deployment
-    if (selected.length < 3) {
-      cashReserve += remainingSip;
-      remainingSip = 0;
-    }
+    // Step 6: Allocation Priority Rule - Distribute remaining before assigning cash
+    if (remainingSip > 0 && selected.length >= 2) {
+      const eligibleStocks = tempAllocations.filter(a => {
+        const isNegative = a.reasons.some((r: string) => 
+          r.toLowerCase().includes("unfavorable") || 
+          r.toLowerCase().includes("weak momentum") || 
+          r.toLowerCase().includes("high risk")
+        );
+        return !isNegative && 
+               (sectorAllocated[a.signals.sector] || 0) < SECTOR_CAP &&
+               a.amount < sipAmount * MAX_STOCK_CAP;
+      });
 
-    // Redistribution: Only if we have 3+ stocks and remaining funds
-    if (remainingSip > 0 && selected.length >= 3) {
-      const uncappedStocks = tempAllocations.filter(a => 
-        (sectorAllocated[a.signals.sector] || 0) < SECTOR_CAP &&
-        a.amount < sipAmount * MAX_STOCK_CAP
-      );
-      
-      if (uncappedStocks.length > 0) {
-        const uncappedTotalScore = uncappedStocks.reduce((sum, a) => sum + a.score, 0);
+      if (eligibleStocks.length > 0) {
+        const eligibleTotalScore = eligibleStocks.reduce((sum, a) => sum + a.score, 0);
         const sipToDistribute = remainingSip;
         
-        uncappedStocks.forEach(a => {
-          const extra = (a.score / uncappedTotalScore) * sipToDistribute;
+        eligibleStocks.forEach(a => {
+          const extra = (a.score / eligibleTotalScore) * sipToDistribute;
           const currentSectorTotal = sectorAllocated[a.signals.sector] || 0;
           const allowedBySector = Math.max(0, SECTOR_CAP - currentSectorTotal);
           const allowedByStock = Math.max(0, (sipAmount * MAX_STOCK_CAP) - a.amount);
@@ -407,9 +445,58 @@ export class SIPService {
       }
     }
 
-    // Any remaining SIP goes to cashReserve (NEVER dump into first stock)
-    cashReserve += remainingSip;
-    remainingSip = 0;
+    // Step 5: Fix Cash Reserve Logic
+    // Cash reserve should ONLY exist if no good opportunities OR risk too high
+    // If selectedStocks >= 2: cashReserve <= 25% of sipAmount
+    if (selected.length >= 2) {
+      const maxAllowedCash = sipAmount * 0.25;
+      const currentCash = cashReserve + remainingSip;
+      
+      if (currentCash > maxAllowedCash) {
+        const excessCash = currentCash - maxAllowedCash;
+        // Try to distribute excessCash back to eligible stocks
+        const eligibleStocks = tempAllocations.filter(a => {
+          const isNegative = a.reasons.some((r: string) => 
+            r.toLowerCase().includes("unfavorable") || 
+            r.toLowerCase().includes("weak momentum") || 
+            r.toLowerCase().includes("high risk")
+          );
+          return !isNegative && 
+                 (sectorAllocated[a.signals.sector] || 0) < SECTOR_CAP &&
+                 a.amount < sipAmount * MAX_STOCK_CAP;
+        });
+
+        if (eligibleStocks.length > 0) {
+          const eligibleTotalScore = eligibleStocks.reduce((sum, a) => sum + a.score, 0);
+          let distributed = 0;
+          
+          eligibleStocks.forEach(a => {
+            const extra = (a.score / eligibleTotalScore) * excessCash;
+            const currentSectorTotal = sectorAllocated[a.signals.sector] || 0;
+            const allowedBySector = Math.max(0, SECTOR_CAP - currentSectorTotal);
+            const allowedByStock = Math.max(0, (sipAmount * MAX_STOCK_CAP) - a.amount);
+            
+            const actualExtra = Math.floor(Math.min(extra, allowedBySector, allowedByStock) / 100) * 100;
+            
+            a.amount += actualExtra;
+            sectorAllocated[a.signals.sector] += actualExtra;
+            distributed += actualExtra;
+          });
+          
+          remainingSip = (currentCash - distributed);
+          cashReserve = 0;
+        } else {
+          cashReserve = currentCash;
+          remainingSip = 0;
+        }
+      } else {
+        cashReserve = currentCash;
+        remainingSip = 0;
+      }
+    } else {
+      cashReserve += remainingSip;
+      remainingSip = 0;
+    }
 
     // Final Pass: Handle MIN_ALLOCATION and move to cashReserve if too small
     const allocations: StockAllocation[] = [];
@@ -434,7 +521,18 @@ export class SIPService {
     });
 
     // Final cash reserve calculation
-    const finalCashReserve = Math.floor(cashReserve);
+    let finalCashReserve = Math.floor(cashReserve);
+    const totalAllocated = allocations.reduce((sum, a) => sum + a.amount, 0);
+
+    // Step 1: Hard Accounting Constraint
+    if (totalAllocated + finalCashReserve > sipAmount) {
+      finalCashReserve = sipAmount - totalAllocated;
+    }
+    if (totalAllocated + finalCashReserve < sipAmount) {
+      // Small rounding differences, add to cash
+      finalCashReserve = sipAmount - totalAllocated;
+    }
+
     const topTickers = allocations.map(a => a.ticker).join(", ");
     let explanation = allocations.length > 0 
       ? `We've selected ${allocations.length} stocks (${topTickers}) based on their momentum and stability.`

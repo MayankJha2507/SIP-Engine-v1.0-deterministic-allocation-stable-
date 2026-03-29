@@ -42,7 +42,7 @@ export const geminiService = {
         bullishSectors: Array.isArray(result.bullishSectors) ? result.bullishSectors : [],
         bearishSectors: Array.isArray(result.bearishSectors) ? result.bearishSectors : [],
         marketSentiment: ["bullish", "bearish", "neutral"].includes(result.marketSentiment) ? result.marketSentiment : "neutral",
-        summary: result.summary || "Macro data unavailable, using neutral allocation strategy."
+        summary: result.summary || "Market conditions are currently mixed. Maintain a diversified allocation and focus on long-term investing discipline."
       };
     } catch (error) {
       console.warn("Gemini macro signal analysis failed, using fallback:", error);
@@ -50,7 +50,7 @@ export const geminiService = {
         bullishSectors: [],
         bearishSectors: [],
         marketSentiment: "neutral",
-        summary: "Macro data unavailable, using neutral allocation strategy."
+        summary: "Market conditions are currently mixed. Maintain a diversified allocation and focus on long-term investing discipline."
       };
     }
   },
@@ -162,7 +162,7 @@ export const geminiService = {
 
     return {
       signals,
-      strategy: "Market insights are currently limited due to a temporary service interruption. We recommend a balanced approach focusing on high-quality large-cap stocks and maintaining sector diversification until full analysis is restored."
+      strategy: "Market conditions are currently mixed. Maintain a diversified allocation and focus on long-term investing discipline."
     };
   }
 };
