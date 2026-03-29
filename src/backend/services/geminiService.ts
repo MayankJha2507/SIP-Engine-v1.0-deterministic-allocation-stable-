@@ -10,7 +10,51 @@ export interface StockSignals {
   reason: string;
 }
 
+export interface MacroSignals {
+  bullishSectors: string[];
+  bearishSectors: string[];
+  marketSentiment: "bullish" | "bearish" | "neutral";
+  summary: string;
+}
+
 export const geminiService = {
+  async getMacroSignals(): Promise<MacroSignals> {
+    try {
+      const prompt = `
+        Provide a structured analysis of current Indian market macro trends as of early 2026.
+        Identify:
+        1. bullishSectors: Sectors expected to outperform (e.g., ["Banking", "Infrastructure"]).
+        2. bearishSectors: Sectors expected to underperform (e.g., ["IT"]).
+        3. marketSentiment: Overall sentiment ("bullish", "bearish", or "neutral").
+        4. summary: A 1-2 sentence explanation of the current macro environment.
+
+        Return ONLY a JSON object with these keys. No markdown, no extra text.
+      `;
+
+      const response = await ai.models.generateContent({
+        model: "gemini-3-flash-preview",
+        contents: [{ parts: [{ text: prompt }] }],
+        config: { responseMimeType: "application/json" }
+      });
+
+      const result = JSON.parse(response.text || "{}");
+      return {
+        bullishSectors: Array.isArray(result.bullishSectors) ? result.bullishSectors : [],
+        bearishSectors: Array.isArray(result.bearishSectors) ? result.bearishSectors : [],
+        marketSentiment: ["bullish", "bearish", "neutral"].includes(result.marketSentiment) ? result.marketSentiment : "neutral",
+        summary: result.summary || "Macro data unavailable, using neutral allocation strategy."
+      };
+    } catch (error) {
+      console.warn("Gemini macro signal analysis failed, using fallback:", error);
+      return {
+        bullishSectors: [],
+        bearishSectors: [],
+        marketSentiment: "neutral",
+        summary: "Macro data unavailable, using neutral allocation strategy."
+      };
+    }
+  },
+
   async getTopPicks() {
     try {
       const prompt = `

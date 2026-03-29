@@ -19,16 +19,24 @@ router.post("/", async (req, res) => {
 
   try {
     // 1. Get AI signals if not provided (moving AI logic to backend)
+    let macroSignals;
     if (!aiSignals || Object.keys(aiSignals).length === 0) {
       const horizonYears = typeof horizon === 'string' ? parseInt(horizon) : horizon;
-      const aiResponse = await geminiService.getStockSignals(
-        portfolio,
-        sip_amount,
-        risk_profile,
-        horizonYears
-      );
+      const [aiResponse, macroResponse] = await Promise.all([
+        geminiService.getStockSignals(
+          portfolio,
+          sip_amount,
+          risk_profile,
+          horizonYears
+        ),
+        geminiService.getMacroSignals()
+      ]);
       aiSignals = aiResponse.signals;
       aiStrategy = aiResponse.strategy;
+      macroSignals = macroResponse;
+    } else {
+      // If aiSignals were provided, we still might want macro signals for the allocation
+      macroSignals = await geminiService.getMacroSignals();
     }
 
     if (!aiStrategy) {
@@ -47,7 +55,8 @@ router.post("/", async (req, res) => {
       sipAmount: sip_amount,
       riskProfile: mappedRiskProfile,
       horizon: horizonYears,
-      aiSignals: aiSignals || {}
+      aiSignals: aiSignals || {},
+      macroSignals
     });
 
     // Handle zero allocation case

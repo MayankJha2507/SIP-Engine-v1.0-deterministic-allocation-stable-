@@ -4,6 +4,7 @@
  */
 
 import { PortfolioItem } from "./portfolioService.ts";
+import { MacroSignals } from "./geminiService.ts";
 
 export type RiskProfile = "Low" | "Medium" | "High";
 
@@ -48,31 +49,50 @@ export interface SipInput {
   riskProfile: RiskProfile;
   horizon: number;
   aiSignals: Record<string, StockSignals>; // ✅ Restored for backward compatibility
+  macroSignals?: MacroSignals;
 }
 
-export function generateReasonsFromSignals(signals: StockSignals, riskProfile: RiskProfile): string[] {
+const STATIC_SECTOR_MAP: Record<string, string> = {
+  RELIANCE: "Energy",
+  TCS: "IT",
+  INFY: "IT",
+  WIPRO: "IT",
+  HDFCBANK: "Banking",
+  ICICIBANK: "Banking",
+  BAJFINANCE: "NBFC",
+  HINDUNILVR: "FMCG",
+};
+
+export function generateReasonsFromSignals(signals: StockSignals, riskProfile: RiskProfile, score: number): string[] {
   const reasons: string[] = [];
   
-  if (signals.trend === "positive") reasons.push("Strong upward momentum");
-  if (signals.trend === "negative") reasons.push("Weak momentum");
-  if (signals.trend === "flat") reasons.push("Stable trend");
-  
-  if (signals.volatility === "high") {
-    reasons.push(riskProfile === "Low" ? "High volatility for your selected risk level" : "Elevated volatility");
-  } else if (signals.volatility === "low") {
-    reasons.push("Low volatility suitable for your risk profile");
+  // Align reasoning with score
+  if (score > 6) {
+    if (signals.trend === "positive") reasons.push("Strong upward momentum");
+    if (signals.marketCap === "large") reasons.push("Large-cap stability");
+    if (signals.volatility === "low") reasons.push("Low volatility suitable for your risk profile");
+  } else if (score >= 4) {
+    reasons.push("Mixed market signals");
+    if (signals.trend === "flat") reasons.push("Stable price trend");
+    if (signals.marketCap === "mid") reasons.push("Balanced growth and stability");
+  } else {
+    // score < 4
+    if (signals.trend === "negative") reasons.push("Weak momentum");
+    if (signals.volatility === "high") reasons.push("High volatility for your selected risk level");
+    if (signals.marketCap === "small") reasons.push("High growth potential but elevated risk");
+    if (reasons.length === 0) reasons.push("Current market conditions are unfavorable");
   }
-  
-  if (signals.marketCap === "large") reasons.push("Large-cap stability");
-  if (signals.marketCap === "mid") reasons.push("Balanced growth and stability");
-  if (signals.marketCap === "small") reasons.push("High growth potential");
   
   return reasons;
 }
 
 export class SIPService {
   async calculateAllocation(input: SipInput): Promise<SipAllocationResult> {
-    const { portfolio, sipAmount, riskProfile, horizon, aiSignals } = input;
+    const { portfolio, sipAmount, riskProfile, horizon, aiSignals, macroSignals } = input;
+    
+    if (macroSignals) {
+      console.log("Macro Signals:", macroSignals);
+    }
 
     if (!portfolio.length) {
       return {
@@ -85,6 +105,7 @@ export class SIPService {
     }
 
     const MIN_ALLOCATION = 1000;
+    const VERY_LOW_THRESHOLD = 3.0; // Reduced from 4.0 to prevent over-exclusion
     const excluded: ExcludedStock[] = [];
     const candidates: (PortfolioItem & {
       finalScore: number;
@@ -97,10 +118,24 @@ export class SIPService {
     const sectorWeights: Record<string, number> = {};
 
     portfolio.forEach(item => {
-      const s = aiSignals[item.ticker];
-      if (s) {
-        sectorWeights[s.sector] = (sectorWeights[s.sector] || 0) + item.weight;
+      let s = aiSignals[item.ticker];
+      
+      // Signal Fallback
+      if (!s) {
+        s = {
+          trend: "flat",
+          volatility: "medium",
+          marketCap: "large",
+          sector: STATIC_SECTOR_MAP[item.ticker] || "Other"
+        };
+      } else {
+        // Ensure sector is mapped if missing or "Unknown"
+        if (!s.sector || s.sector === "Unknown") {
+          s.sector = STATIC_SECTOR_MAP[item.ticker] || "Other";
+        }
       }
+      
+      sectorWeights[s.sector] = (sectorWeights[s.sector] || 0) + item.weight;
     });
 
     const sorted = [...portfolio].sort((a, b) => b.weight - a.weight);
@@ -127,16 +162,18 @@ export class SIPService {
     portfolio.forEach(item => {
       let s = aiSignals[item.ticker];
 
+      // Signal Fallback
       if (!s) {
-        excluded.push({
-          ticker: item.ticker,
-          reasons: ["Insufficient market data"]
-        });
-        return;
+        s = {
+          trend: "flat",
+          volatility: "medium",
+          marketCap: "large",
+          sector: STATIC_SECTOR_MAP[item.ticker] || "Other"
+        };
       }
 
       // Safety Fallbacks
-      if (!s.sector) s.sector = "Other";
+      if (!s.sector || s.sector === "Unknown") s.sector = STATIC_SECTOR_MAP[item.ticker] || "Other";
       if (!s.marketCap) s.marketCap = "large";
 
       // 1. Trend Score
@@ -177,20 +214,42 @@ export class SIPService {
       const sectorPenalty = Math.min(10, (sectorWeights[s.sector] || 0) / 4);
       const weightPenalty = Math.min(10, item.weight / 3);
 
+      // 8. Macro Adjustment (Soft Overlay)
+      let macroAdjustment = 0;
+      if (macroSignals) {
+        if (macroSignals.bullishSectors.includes(s.sector)) {
+          macroAdjustment += 0.5;
+        }
+        if (macroSignals.bearishSectors.includes(s.sector)) {
+          macroAdjustment -= 0.5;
+        }
+
+        // Scale by horizon
+        if (horizon <= 2) {
+          macroAdjustment *= 1.5;
+        } else if (horizon >= 5) {
+          macroAdjustment *= 0.5;
+        }
+
+        // Safety Limit: Clamp to [-1, 1]
+        macroAdjustment = Math.max(-1, Math.min(1, macroAdjustment));
+      }
+
       let finalScore =
         (0.4 * trendScore) +
         (0.3 * stabilityScore) -
         (0.2 * sectorPenalty) -
         (0.1 * weightPenalty) -
-        volatilityPenalty;
+        volatilityPenalty +
+        macroAdjustment;
 
       finalScore = Math.max(0, Math.min(10, finalScore));
 
       // Exclusion rules
-      if (finalScore < 4) {
+      if (finalScore < VERY_LOW_THRESHOLD) {
         excluded.push({
           ticker: item.ticker,
-          reasons: generateReasonsFromSignals(s, riskProfile),
+          reasons: generateReasonsFromSignals(s, riskProfile, finalScore),
           score: Number(finalScore.toFixed(1))
         });
         return;
@@ -200,7 +259,7 @@ export class SIPService {
       if (overConcentratedSector && s.sector === overConcentratedSector && finalScore < 5) {
         excluded.push({
           ticker: item.ticker,
-          reasons: ["Sector overexposure"],
+          reasons: generateReasonsFromSignals(s, riskProfile, finalScore),
           score: Number(finalScore.toFixed(1))
         });
         return;
@@ -238,6 +297,13 @@ export class SIPService {
     let selected = candidates
       .sort((a, b) => b.finalScore - a.finalScore)
       .slice(0, maxStocks);
+
+    // Ensure minimum selection: Pick top 2 stocks if available
+    if (selected.length < 2 && candidates.length >= 2) {
+      selected = candidates
+        .sort((a, b) => b.finalScore - a.finalScore)
+        .slice(0, 2);
+    }
 
     // Ensure diversification
     if (overConcentratedSector) {
@@ -305,7 +371,7 @@ export class SIPService {
         amount,
         signals: s.signals,
         score: s.finalScore,
-        reasons: generateReasonsFromSignals(s.signals, riskProfile)
+        reasons: generateReasonsFromSignals(s.signals, riskProfile, s.finalScore)
       });
     });
 
@@ -374,6 +440,13 @@ export class SIPService {
       ? `We've selected ${allocations.length} stocks (${topTickers}) based on their momentum and stability.`
       : "No suitable opportunities this cycle. Hold cash.";
     
+    if (macroSignals) {
+      explanation += `\nMacro adjustment applied:
+- Favoring: ${macroSignals.bullishSectors.join(", ") || "None"}
+- Avoiding: ${macroSignals.bearishSectors.join(", ") || "None"}
+- Market sentiment: ${macroSignals.marketSentiment}`;
+    }
+
     if (finalCashReserve > 0) {
       explanation += ` A cash reserve of ₹${finalCashReserve.toLocaleString()} is recommended for better future opportunities.`;
     }
